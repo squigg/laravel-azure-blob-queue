@@ -2,11 +2,14 @@
 
 namespace Stayallive\LaravelAzureBlobQueue;
 
+use Illuminate\Contracts\Queue\Queue as QueueInterface;
 use Illuminate\Queue\Queue;
-use Illuminate\Queue\QueueInterface;
-use WindowsAzure\Queue\QueueRestProxy;
-use WindowsAzure\Queue\Models\CreateMessageOptions;
-use WindowsAzure\Queue\Models\PeekMessagesOptions;
+use MicrosoftAzure\Storage\Queue\Internal\IQueue;
+use MicrosoftAzure\Storage\Queue\Models\CreateMessageOptions;
+use MicrosoftAzure\Storage\Queue\Models\GetQueueMetadataResult;
+use MicrosoftAzure\Storage\Queue\Models\ListMessagesOptions;
+use MicrosoftAzure\Storage\Queue\Models\ListMessagesResult;
+use MicrosoftAzure\Storage\Queue\QueueRestProxy;
 
 class AzureQueue extends Queue implements QueueInterface
 {
@@ -14,7 +17,7 @@ class AzureQueue extends Queue implements QueueInterface
     /**
      * The Azure IServiceBus instance.
      *
-     * @var \WindowsAzure\Queue\QueueRestProxy
+     * @var QueueRestProxy
      */
     protected $azure;
 
@@ -24,26 +27,30 @@ class AzureQueue extends Queue implements QueueInterface
      * @var string
      */
     protected $default;
+    /**
+     * @var
+     */
+    private $peekTimeout;
 
     /**
      * Create a new Azure IQueue queue instance.
      *
-     * @param \WindowsAzure\Queue\QueueRestProxy $azure
-     * @param  string                            $default
-     *
-     * @return \Stayallive\LaravelAzureBlobQueue\AzureQueue
+     * @param IQueue $azure
+     * @param string $default
+     * @param int $visibilityTimeout
      */
-    public function __construct(QueueRestProxy $azure, $default)
+    public function __construct(IQueue $azure, $default, $visibilityTimeout)
     {
-        $this->azure   = $azure;
+        $this->azure = $azure;
         $this->default = $default;
+        $this->peekTimeout = $visibilityTimeout ? $visibilityTimeout : 5;
     }
 
     /**
      * Push a new job onto the queue.
      *
      * @param  string $job
-     * @param  mixed  $data
+     * @param  mixed $data
      * @param  string $queue
      *
      * @return void
@@ -58,11 +65,11 @@ class AzureQueue extends Queue implements QueueInterface
      *
      * @param  string $payload
      * @param  string $queue
-     * @param  array  $options
+     * @param  array $options
      *
      * @return mixed
      */
-    public function pushRaw($payload, $queue = null, array $options = array())
+    public function pushRaw($payload, $queue = null, array $options = [])
     {
         $this->azure->createMessage($this->getQueue($queue), $payload);
     }
@@ -70,9 +77,9 @@ class AzureQueue extends Queue implements QueueInterface
     /**
      * Push a new job onto the queue after a delay.
      *
-     * @param  int    $delay
+     * @param  int $delay
      * @param  string $job
-     * @param  mixed  $data
+     * @param  mixed $data
      * @param  string $queue
      *
      * @return void
@@ -81,7 +88,7 @@ class AzureQueue extends Queue implements QueueInterface
     {
         $payload = $this->createPayload($job, $data);
 
-        $options = new CreateMessageOptions;
+        $options = new CreateMessageOptions();
         $options->setVisibilityTimeoutInSeconds($delay);
 
         $this->azure->createMessage($this->getQueue($queue), $payload, $options);
@@ -96,11 +103,13 @@ class AzureQueue extends Queue implements QueueInterface
      */
     public function pop($queue = null)
     {
-        $queue = $this->getQueue($queue);
+        // As recommended in the API docs, first call listMessages to hide message from other code
+        $listMessagesOptions = new ListMessagesOptions();
+        $listMessagesOptions->setVisibilityTimeoutInSeconds($this->peekTimeout);
 
-        $result = $this->azure->peekMessages($queue, new PeekMessagesOptions);
-
-        $messages = $result->getQueueMessages();
+        /** @var ListMessagesResult $listMessages */
+        $listMessages = $this->azure->listMessages($this->getQueue($queue), $listMessagesOptions);
+        $messages = $listMessages->getQueueMessages();
 
         if (count($messages) > 0) {
             return new AzureJob($this->container, $this->azure, $messages[0], $queue);
@@ -124,10 +133,26 @@ class AzureQueue extends Queue implements QueueInterface
     /**
      * Get the underlying Azure IQueue instance.
      *
-     * @return \WindowsAzure\Queue\Internal\IQueue
+     * @return IQueue
      */
     public function getAzure()
     {
         return $this->azure;
+    }
+
+    /**
+     * Get the size of the queue.
+     *
+     * @param  string $queue
+     * @return int
+     */
+    public function size($queue = null)
+    {
+        $queue = $this->getQueue($queue);
+
+        /** @var GetQueueMetadataResult $metaData */
+        $metaData = $this->azure->getQueueMetadata($queue);
+
+        return $metaData->getApproximateMessageCount();
     }
 }

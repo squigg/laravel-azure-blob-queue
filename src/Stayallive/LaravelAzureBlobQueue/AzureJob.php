@@ -2,25 +2,28 @@
 
 namespace Stayallive\LaravelAzureBlobQueue;
 
-use Illuminate\Queue\Jobs\Job;
 use Illuminate\Container\Container;
-use WindowsAzure\Queue\QueueRestProxy;
-use WindowsAzure\Queue\Models\WindowsAzureQueueMessage;
+use Illuminate\Contracts\Queue\Job as JobContract;
+use Illuminate\Queue\Jobs\Job;
+use MicrosoftAzure\Storage\Queue\Internal\IQueue;
+use MicrosoftAzure\Storage\Queue\Models\MicrosoftAzureQueueMessage;
+use MicrosoftAzure\Storage\Queue\Models\QueueMessage;
+use MicrosoftAzure\Storage\Queue\QueueRestProxy;
 
-class AzureJob extends Job
+class AzureJob extends Job implements JobContract
 {
 
     /**
      * The Azure QueueRestProxy instance.
      *
-     * @var \WindowsAzure\Queue\QueueRestProxy
+     * @var QueueRestProxy
      */
     protected $azure;
 
     /**
-     * The Azure WindowsAzureQueueMessage instance.
+     * The Azure QueueMessage instance.
      *
-     * @var \WindowsAzure\Queue\Models\WindowsAzureQueueMessage
+     * @var QueueMessage
      */
     protected $job;
 
@@ -34,29 +37,19 @@ class AzureJob extends Job
     /**
      * Create a new job instance.
      *
-     * @param \Illuminate\Container\Container                     $container
-     * @param \WindowsAzure\Queue\QueueRestProxy                  $azure
-     * @param \WindowsAzure\Queue\Models\WindowsAzureQueueMessage $job
-     * @param  string                                             $queue
+     * @param \Illuminate\Container\Container $container
+     * @param IQueue $azure
+     * @param MicrosoftAzureQueueMessage $job
+     * @param  string $queue
      *
      * @return \Stayallive\LaravelAzureBlobQueue\AzureJob
      */
-    public function __construct(Container $container, QueueRestProxy $azure, WindowsAzureQueueMessage $job, $queue)
+    public function __construct(Container $container, IQueue $azure, MicrosoftAzureQueueMessage $job, $queue)
     {
-        $this->azure     = $azure;
-        $this->job       = $job;
-        $this->queue     = $queue;
+        $this->azure = $azure;
+        $this->job = $job;
+        $this->queue = $queue;
         $this->container = $container;
-    }
-
-    /**
-     * Fire the job.
-     *
-     * @return void
-     */
-    public function fire()
-    {
-        $this->resolveAndFire(json_decode($this->getRawBody(), true));
     }
 
     /**
@@ -66,6 +59,7 @@ class AzureJob extends Job
      */
     public function delete()
     {
+        parent::delete();
         $this->azure->deleteMessage($this->queue, $this->job->getMessageId(), $this->job->getPopReceipt());
     }
 
@@ -78,7 +72,9 @@ class AzureJob extends Job
      */
     public function release($delay = 0)
     {
-        $this->azure->updateMessage($this->queue, $this->job->getMessageId(), $this->job->getPopReceipt(), null, $delay);
+        parent::release($delay);
+        $this->azure->updateMessage($this->queue, $this->job->getMessageId(), $this->job->getPopReceipt(), null,
+            $delay);
     }
 
     /**
@@ -104,7 +100,7 @@ class AzureJob extends Job
     /**
      * Get the underlying Azure client instance.
      *
-     * @return \WindowsAzure\Queue\QueueRestProxy
+     * @return QueueRestProxy
      */
     public function getAzure()
     {
@@ -114,11 +110,19 @@ class AzureJob extends Job
     /**
      * Get the underlying raw Azure job.
      *
-     * @return \WindowsAzure\Queue\Models\WindowsAzureQueueMessage
+     * @return QueueMessage
      */
     public function getAzureJob()
     {
         return $this->job;
+    }
+
+    /**
+     * @return int
+     */
+    public function getJobId()
+    {
+        return $this->job->getMessageId();
     }
 
     /**

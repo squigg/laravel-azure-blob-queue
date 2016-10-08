@@ -1,11 +1,14 @@
-Windows Azure Blob Queue driver for Laravel
-===========================================
+Windows Azure Storage Queue driver for Laravel
+==============================================
 
 #### Installation
 
 Require this package in your `composer.json`:
 
+### Laravel 4.x
 	"stayallive/laravel-azure-blob-queue": "1.*"
+### Laravel 5.x
+    "stayallive/laravel-azure-blob-queue": "2.*"
 
 Add the following pear repository in your `composer.json` required by the Azure SDK:
 
@@ -25,11 +28,12 @@ After composer update is finished you need to add ServiceProvider to your `provi
 add the following to the `connection` array in `app/config/queue.php`, set your `default` connection to `azure` and fill out your own connection data from the Azure Management portal:
 
 	'azure' => array(
-        'driver'      => 'azure.blob',
-        'protocol'    => 'https',
-        'accountname' => '',
-        'key'         => '',
-        'queue'       => ''
+        'driver'        => 'azure.blob',    
+        'protocol'      => 'https'          // https or http
+        'accountname'   => '',              // Your storage account name
+        'key'           => '',              // Access key
+        'queue'         => '',              // Queue container name
+        'timeout'       => 60               // Timeout (seconds) before a job is released back to the queue
     )
 
 #### Usage
