@@ -26,8 +26,8 @@
   ],
   "require": {
     "php": ">=5.4.0",
-    "illuminate/queue": "5.*",
-    "illuminate/support": "5.*",
+    "illuminate/queue": "5.2.*",
+    "illuminate/support": "5.2.*",
     "microsoft/windowsazure": "0.4.*"
   },
   "autoload": {
